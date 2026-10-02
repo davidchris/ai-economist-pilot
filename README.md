@@ -5,6 +5,10 @@ Research date: 2026-09-15.
 Current engineering work (2026-09-17): local Git repository with uv-managed
 dependencies, Ruff formatting/linting, ty type checking, and pytest. The resumable
 training contract and acceptance commands are in [restart validation](RESUME_VALIDATION.md).
+Free-market/fixed-tax training and held-out evaluation are documented in
+[evaluation validation](EVALUATION_VALIDATION.md).
+Joint worker–planner training and the phase transition are documented in
+[planner validation](PLANNER_VALIDATION.md).
 See [HANDOFF.md](HANDOFF.md) for remaining work and [UPSTREAM.md](UPSTREAM.md)
 for the separately supplied Foundation source dependency.
 
@@ -149,6 +153,17 @@ For the original result, compare free market, US-federal, Saez, and learned taxe
 
 For the extended study, use its archived experiment configurations and analysis code. Verify metric definitions, map layout, skill assignment, policy observations, and seed handling. Record environment steps separately from per-agent transitions. Preserve the source revision, dependency lock, configurations, checkpoints, evaluation logs, and comparison plots.
 
-**Next concrete task:** add resumable training, checkpoint retention, and restart-state semantics.
+**Budget and observation reconciliation is complete:** see
+[PAPER_RECONCILIATION.md](PAPER_RECONCILIATION.md) for differences and a bounded longer-run design.
+The separate planner policy and phase transition are implemented; see
+[planner validation](PLANNER_VALIDATION.md).
+Resumable training and [held-out worker and joint evaluation](EVALUATION_VALIDATION.md) are implemented.
 The [collection profiling comparison](COLLECTION_PROFILE.md) is complete.
-Worker evaluation and planner training follow resumable training.
+
+
+The [bounded three-seed experiment](BOUNDED_EXPERIMENT.md) is complete: all three
+regimes reached 100 updates per seed, followed by 90 common-seed held-out episodes.
+Resource/checkpoint gates and repeatability checks passed. Results show large
+training-seed variation and zero output for two joint policies; they validate the
+workflow, not convergence. Spatial planner observations, matched baseline phase
+transitions and curriculum scaling remain prerequisites for paper reproduction.

@@ -1,13 +1,13 @@
 # Training pilot
 
-This pilot measures a short worker-training run in the Salesforce Foundation economy.
+This pilot trains worker policies and a separate tax planner in the Salesforce Foundation economy.
 It uses native Linux, Python 3.12, and PyTorch 2.9.1 with CUDA 12.6.
 
 ## Scope
 
 - The pinned Foundation scenario has four agents, a 25 × 25 map, and 1,000-step episodes.
 - Two subprocesses each run a separate economy. The eight workers share one policy.
-- Taxes remain disabled, as in the upstream first training phase.
+- Taxes default to disabled; `--tax-regime fixed-tax` trains the fixed US-federal baseline.
 - The policy and value networks each use spatial embeddings, convolutions, dense layers, and an LSTM.
 - PPO trains on 128-step rollouts, with 16-step recurrent sequences and two optimization epochs.
 - Forty updates produce 10,240 environment steps, or 40,960 individual agent transitions.
@@ -34,7 +34,8 @@ This pilot does not establish economic convergence, learned tax quality, or repr
 | `../upstream/LOCAL_PATCHES.md` | Source revision and NumPy compatibility patch |
 
 The pilot uses a small PyTorch loop to measure the workload without installing Ray or porting its historical wrappers.
-A full implementation still needs an explicit trainer choice and a validated planner policy.
+Joint planner training is implemented in the same PyTorch trainer; paper-scale configuration
+and economic validation remain future work.
 
 ## Training-server environment
 
@@ -183,3 +184,37 @@ CUDA synchronizes at profiling boundaries to attribute asynchronous work.
 This changes execution timing. The unprofiled controls help measure this effect.
 The rollout total also includes bookkeeping and instrumentation outside the
 named spans. The transport probe is outside training-loop throughput.
+
+## Held-out evaluation
+
+Worker policies support free-market and fixed-tax training; joint checkpoints
+support frozen worker–planner held-out evaluation. See [evaluation contract and commands](../EVALUATION_VALIDATION.md).
+Run `pilot/evaluate.py --checkpoint PATH --seeds 10000 10001` inside the documented
+bounded scope. It evaluates complete episodes on CPU with frozen weights, fresh
+recurrent state, full labor costs, and the checkpoint's tax regime.
+Evaluation reports productivity, equality, welfare, returns, taxes, and uncertainty
+across seeds. Train separate policies in the two regimes and use common held-out
+seeds to compare them. Historical checkpoints predate the new source fingerprint
+and remain preserved but incompatible; no migration is provided.
+
+
+## Joint worker–planner training
+
+Use `--phase2-from PATH` with a **current-format free-market checkpoint** to start
+phase two. It preserves worker weights and Adam state, creates a separate recurrent
+planner and optimizer, enables Foundation's learned taxes and tax annealing, and
+uses full labor costs. Both policies train in the same economies. The transition
+starts fresh episodes, recurrent state and phase counters. `--updates` is the total
+within that phase; use `--resume` for exact update-boundary continuation thereafter.
+
+The planner has seven masked categorical action heads, public per-worker inputs,
+256-unit policy/value LSTMs, learning rate 1e-4, and a linear entropy schedule from
+2.0 to 0.125 over 50 million aggregate phase-two environment steps. Worker entropy
+remains 0.025. Both policies retain numerical, recurrent-replay and CPU portability
+checks. Format-v2 checkpoints save all new policy and schedule state.
+
+See [planner contract, commands and measurements](../PLANNER_VALIDATION.md).
+Historical checkpoints cannot be migrated. The evaluator now runs both frozen
+policies from compatible joint checkpoints; retain the phase-one checkpoint for
+held-out seed validation. See the [budget/observation audit and bounded experiment
+design](../PAPER_RECONCILIATION.md) before longer runs.

@@ -1,5 +1,9 @@
 # Resumable training validation
 
+Current checkpoint format is version 2; see [joint planner validation](PLANNER_VALIDATION.md).
+The measurements below describe the earlier milestone. Historical checkpoints
+remain preserved but fail the current source/version compatibility checks.
+
 Implementation and measurements are local to the training server, 2026-09-17.
 
 ## Contract

@@ -5,6 +5,8 @@ layers, layer normalization, and an LSTM, following the upstream model layout.
 This is a new implementation, not a validated conversion of TensorFlow weights.
 """
 
+from typing import cast
+
 import torch
 from torch import nn
 from torch.distributions import Categorical
@@ -87,3 +89,70 @@ def advantages(rewards, values, dones, bootstrap, gamma=0.998, lam=0.98):
         result[t] = carry
         next_value = values[t]
     return result, result + values
+
+
+class MultiCategorical:
+    """Independent bracket actions, with joint log probability and summed entropy."""
+
+    def __init__(self, logits, sizes):
+        self.parts = [Categorical(logits=part) for part in logits.split(sizes, dim=-1)]
+
+    def sample(self):
+        return torch.stack([part.sample() for part in self.parts], dim=-1)
+
+    def log_prob(self, actions):
+        return torch.stack(
+            [part.log_prob(actions[..., i]) for i, part in enumerate(self.parts)], dim=-1
+        ).sum(-1)
+
+    def entropy(self):
+        return torch.stack([part.entropy() for part in self.parts], dim=-1).sum(-1)
+
+    @property
+    def probs(self):
+        return torch.cat([cast(torch.Tensor, part.probs) for part in self.parts], dim=-1)
+
+
+class PlannerTower(nn.Module):
+    def __init__(self, inputs, outputs):
+        super().__init__()
+        self.dense = nn.Sequential(
+            nn.Linear(inputs, 256), nn.ReLU(), nn.Linear(256, 256), nn.ReLU(), nn.LayerNorm(256)
+        )
+        self.recurrent = nn.LSTM(256, 256)
+        self.output = nn.Linear(256, outputs)
+
+    def forward(self, observations, state, starts):
+        encoded = self.dense(observations["flat"])
+        pieces = []
+        for t in range(len(encoded)):
+            state = tuple(value * (1 - starts[t]).view(1, -1, 1) for value in state)
+            output, state = self.recurrent(encoded[t : t + 1], state)
+            pieces.append(output)
+        return self.output(torch.cat(pieces)), state
+
+
+class PlannerActorCritic(nn.Module):
+    def __init__(self, shapes, action_sizes):
+        super().__init__()
+        if sum(action_sizes) != shapes["action_mask"][0] or min(action_sizes) < 1:
+            raise ValueError("Incompatible planner action layout")
+        self.action_sizes = action_sizes
+        self.policy = PlannerTower(shapes["flat"][0], sum(action_sizes))
+        self.value = PlannerTower(shapes["flat"][0], 1)
+
+    def initial_state(self, batch, device):
+        return tuple(torch.zeros(1, batch, 256, device=device) for _ in range(4))
+
+    def forward(self, observations, state, starts):
+        logits, policy_state = self.policy(observations, state[:2], starts)
+        values, value_state = self.value(observations, state[2:], starts)
+        for mask in observations["action_mask"].split(self.action_sizes, dim=-1):
+            if not (mask > 0).any(-1).all():
+                raise ValueError("Planner action subspace has no valid action")
+        logits = logits.masked_fill(observations["action_mask"] <= 0, -1e9)
+        return (
+            MultiCategorical(logits, self.action_sizes),
+            values.squeeze(-1),
+            (*policy_state, *value_state),
+        )

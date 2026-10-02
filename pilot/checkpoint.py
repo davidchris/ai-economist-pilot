@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-VERSION = 1
+VERSION = 2
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -19,7 +19,9 @@ def compatibility():
     """Reject code/runtime drift rather than promising a portable simulator pickle."""
     digest = hashlib.sha256()
     paths = sorted((ROOT / "upstream/ai_economist/foundation").rglob("*.py"))
-    paths += [ROOT / "upstream/tutorials/rllib/phase1/config.yaml"]
+    paths += [
+        ROOT / f"upstream/tutorials/rllib/{phase}/config.yaml" for phase in ("phase1", "phase2")
+    ]
     paths += [
         ROOT / "pilot" / name
         for name in ("model.py", "environment.py", "train.py", "checkpoint.py")
@@ -32,7 +34,7 @@ def compatibility():
         "python": platform.python_version(),
         "numpy": np.__version__,
         "torch": str(torch.__version__),
-        "layout": "actor-critic-4x1xNx128",
+        "layout": "worker-4x1xNx128-planner-4x1xNx256",
     }
 
 
@@ -57,7 +59,7 @@ def load(path):
     # The outer format uses safe torch primitives; worker blobs are trusted pickle.
     snapshot = torch.load(path, map_location="cpu", weights_only=True)
     if snapshot.get("version") != VERSION:
-        raise ValueError("Unsupported/legacy checkpoint: exact resume requires format version 1")
+        raise ValueError("Unsupported/legacy checkpoint: exact resume requires format version 2")
     if snapshot["compatibility"] != compatibility():
         raise ValueError("Checkpoint source/runtime/recurrent layout is incompatible")
     return snapshot
