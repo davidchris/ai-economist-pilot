@@ -3,6 +3,7 @@
 import json
 import os
 import pickle
+import struct
 import subprocess
 import sys
 import time
@@ -28,6 +29,10 @@ def equal_state(left, right, seen=None):
         torch.testing.assert_close(left, right, rtol=0, atol=0)
     elif isinstance(left, np.ndarray):
         np.testing.assert_array_equal(left, right)
+    elif isinstance(left, float) and np.isnan(left):
+        # Foundation diagnostic metrics can be undefined when there are no trades.
+        # Compare their bit patterns too; NaN != NaN is not a restart difference.
+        assert struct.pack("d", left) == struct.pack("d", right)
     elif isinstance(left, dict):
         assert left.keys() == right.keys()
         for key in left:

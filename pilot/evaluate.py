@@ -12,7 +12,14 @@ from pathlib import Path
 import checkpoint
 import numpy as np
 import torch
-from environment import ROOT, configuration, pack, pack_planner
+from environment import (
+    ROOT,
+    action_shares,
+    configuration_from_run,
+    pack,
+    pack_planner,
+    resources_gathered,
+)
 from model import ActorCritic, PlannerActorCritic
 
 METRICS = {
@@ -23,8 +30,7 @@ METRICS = {
 
 
 def evaluation_config(saved):
-    regime = saved["config"]["tax_regime"]
-    expected = configuration(regime)
+    expected = configuration_from_run(saved["config"])
     if saved["config"]["environment"] != expected:
         raise ValueError("Unsupported checkpoint environment")
     config = copy.deepcopy(expected)
@@ -91,6 +97,7 @@ def episode(model, config, seed, action_mode, planner=None, expected_shapes=None
     state = model.initial_state(4, "cpu")
     starts = torch.ones(1, 4)
     returns = np.zeros(4)
+    action_counts = np.zeros(shapes["action_mask"][0], dtype=np.int64)
     for step in range(config["episode_length"]):
         tensors = {key: torch.from_numpy(value).unsqueeze(0) for key, value in observation.items()}
         distribution, values, state = model(tensors, state, starts)
@@ -101,6 +108,7 @@ def episode(model, config, seed, action_mode, planner=None, expected_shapes=None
         )[0].numpy()
         if not (observation["action_mask"][np.arange(4), actions] > 0).all():
             raise ValueError("Invalid masked action")
+        np.add.at(action_counts, actions, 1)
         joint_actions = {str(i): int(a) for i, a in enumerate(actions)}
         if planner is not None:
             assert planner_observation is not None
@@ -176,6 +184,8 @@ def episode(model, config, seed, action_mode, planner=None, expected_shapes=None
         "tax_schedules": tax_schedules,
         "planner_return": planner_return if planner is not None else None,
         "labor_weight": float(env.energy_weight),
+        "resources_gathered": resources_gathered(env),
+        "action_shares": action_shares(action_counts),
         "metrics": metrics,
         "shapes": shapes,
     }
@@ -216,6 +226,8 @@ def evaluate(source, seeds, output=None, action_mode="sample"):
         "compatibility": checkpoint.compatibility(),
         "evaluator_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         "training_progress": saved["progress"],
+        "training_profile": saved["config"].get("profile", "pilot"),
+        "phase_one_progress": saved["config"].get("phase_one_progress"),
         "tax_regime": saved["config"]["tax_regime"],
         "training_seeds": training_seeds(saved),
         "planner_evaluated": planner is not None,

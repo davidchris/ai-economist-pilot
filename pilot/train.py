@@ -16,7 +16,7 @@ import checkpoint as checkpoints
 import numpy as np
 import psutil
 import torch
-from environment import TAX_REGIMES, Environments, configuration
+from environment import TAX_REGIMES, Environments, action_shares, configuration_from_run
 from model import ActorCritic, PlannerActorCritic, advantages
 from profiling import CollectionProfile
 
@@ -79,6 +79,12 @@ def ppo_update(
     dones = torch.as_tensor(np.stack(done_buffer), device=device)
     old_values = torch.stack(value_buffer)
     advantage, returns = advantages(rewards, old_values, dones, bootstrap[0])
+    return_variance = returns.var(unbiased=False).item()
+    explained_variance = (
+        1 - (returns - old_values).var(unbiased=False).item() / return_variance
+        if return_variance > 0
+        else None
+    )
     advantage = (advantage - advantage.mean()) / (advantage.std(unbiased=False) + 1e-8)
     length = args.sequence_length
     data = {
@@ -146,11 +152,14 @@ def ppo_update(
         "gradient_norm_max": max(norms),
         "replay_logprob_max_error": ratio_error,
         "reward_mean": rewards.mean().item(),
+        "explained_variance": explained_variance,
         "entropy_coefficient": entropy_coefficient,
     }
 
 
-def planner_entropy(steps):
+def planner_entropy(steps, profile="pilot"):
+    if profile == "paper2020":
+        return 0.1
     # Upstream phase-two schedule, in aggregate environment steps of this phase.
     return 2.0 + (0.125 - 2.0) * min(steps / 50_000_000, 1.0)
 
@@ -218,12 +227,17 @@ def train(args):
     phase_one = checkpoints.load(args.phase2_from) if args.phase2_from else None
     if phase_one:
         args.phase2_from = str(Path(args.phase2_from).resolve())
-        if phase_one["config"]["tax_regime"] != "free-market":
+        if phase_one["config"]["tax_regime"] != "free-market" or phase_one["config"].get(
+            "phase2_from"
+        ):
             raise ValueError("Phase two requires a free-market phase-one checkpoint")
-        if args.tax_regime not in (None, "learned-tax"):
-            raise ValueError("Phase two requires learned-tax")
-        args.tax_regime = "learned-tax"
+        args.tax_regime = args.tax_regime or "learned-tax"
+        if args.profile is not None and args.profile != phase_one["config"]["profile"]:
+            raise ValueError("Phase transition requires the same training profile")
         for key in (
+            "profile",
+            "tax_anneal_steps",
+            "labor_warmup_constant",
             "workers",
             "seed",
             "horizon",
@@ -249,6 +263,9 @@ def train(args):
         torch.backends.cudnn.allow_tf32 = False
     if saved:
         for key in (
+            "profile",
+            "tax_anneal_steps",
+            "labor_warmup_constant",
             "tax_regime",
             "workers",
             "seed",
@@ -261,27 +278,50 @@ def train(args):
                 setattr(args, key, saved["config"][key])
             elif getattr(args, key) != saved["config"][key]:
                 raise ValueError(f"Incompatible resume configuration: {key}")
-        if saved["config"]["environment"] != configuration(args.tax_regime):
+        if saved["config"]["environment"] != configuration_from_run(vars(args)):
             raise ValueError("Incompatible environment configuration")
         if args.updates <= saved["progress"]["update"]:
             raise ValueError("--updates is a total target and must exceed the saved update")
     else:
+        args.profile = args.profile or "pilot"
+        paper = args.profile == "paper2020"
         for key, value in {
             "tax_regime": "free-market",
             "workers": 2,
             "seed": 42,
-            "horizon": 128,
-            "sequence_length": 16,
-            "epochs": 2,
-            "minibatch_sequences": 16,
+            "horizon": 200 if paper else 128,
+            "sequence_length": 50 if paper else 16,
+            "epochs": 1 if paper else 2,
+            "minibatch_sequences": 60 if paper else 16,
+            "tax_anneal_steps": 54_000_000 if paper else None,
+            "labor_warmup_constant": 10000 if paper else None,
         }.items():
             if getattr(args, key) is None:
                 setattr(args, key, value)
     if args.tax_regime == "learned-tax" and not (saved or phase_one):
         raise ValueError("Learned taxes require --phase2-from or --resume")
     joint = args.tax_regime == "learned-tax"
-    if not (1 <= args.workers <= 4 and 1 <= args.updates <= 100):
-        raise ValueError("workers must be 1..4 and total updates 1..100")
+    first_update = saved["progress"]["update"] if saved else 0
+    max_updates = 999999 if args.profile == "paper2020" else 100
+    if not (
+        1 <= args.workers <= 4
+        and 1 <= args.updates <= max_updates
+        and 1 <= args.updates - first_update <= 100
+    ):
+        raise ValueError(
+            "workers must be 1..4; at most 100 additional updates per invocation; "
+            f"total updates must be 1..{max_updates}"
+        )
+    if args.profile == "pilot" and (
+        args.tax_anneal_steps is not None or args.labor_warmup_constant is not None
+    ):
+        raise ValueError("Explicit curricula require --profile paper2020")
+    if args.profile == "paper2020" and (
+        not np.isfinite(args.labor_warmup_constant)
+        or args.labor_warmup_constant < 0
+        or args.tax_anneal_steps < 1
+    ):
+        raise ValueError("Labor warmup must be finite/nonnegative and tax duration positive")
     if (
         min(
             args.horizon,
@@ -315,6 +355,7 @@ def train(args):
         tax_regime=args.tax_regime,
         profile=args.profile_collection,
         snapshots=saved["workers"] if saved else None,
+        config=configuration_from_run(vars(args)),
     )
     try:
         transport = environments.benchmark_transport() if args.profile_collection else None
@@ -344,7 +385,7 @@ def train(args):
         config = {
             **vars(args),
             "output": str(output.resolve()),
-            "environment": configuration(args.tax_regime),
+            "environment": configuration_from_run(vars(args)),
             "shapes": shapes,
             "planner_shapes": planner_shapes,
             "planner_parameter_count": sum(p.numel() for p in planner.parameters())
@@ -352,7 +393,11 @@ def train(args):
             else 0,
             "planner_action_sizes": environments.planner_action_sizes,
             "planner_learning_rate": 1e-4 if joint else None,
-            "planner_entropy_schedule": [[0, 2.0], [50_000_000, 0.125]] if joint else None,
+            "planner_entropy_schedule": (
+                [[0, 0.1]] if args.profile == "paper2020" else [[0, 2.0], [50_000_000, 0.125]]
+            )
+            if joint
+            else None,
             "phase_one_progress": phase_one["progress"]
             if phase_one
             else saved["config"].get("phase_one_progress")
@@ -385,10 +430,10 @@ def train(args):
             "collection_profile": {},
         }
         schedules = {
-            "phase": "joint" if joint else "worker-only",
+            "phase": "phase2" if args.phase2_from else "worker-only",
             "phase_steps": 0,
             "worker_entropy": 0.025,
-            "planner_entropy": planner_entropy(0) if joint else None,
+            "planner_entropy": planner_entropy(0, args.profile) if joint else None,
         }
         if saved:
             if saved["config"]["shapes"] != shapes:
@@ -425,10 +470,10 @@ def train(args):
                 for k, v in environments.planner_observation.items():
                     np.testing.assert_array_equal(v, saved["planner"]["observation"][k].numpy())
             expected_schedules = {
-                "phase": "joint" if joint else "worker-only",
+                "phase": "phase2" if args.phase2_from else "worker-only",
                 "phase_steps": progress["environment_steps"],
                 "worker_entropy": 0.025,
-                "planner_entropy": planner_entropy(progress["environment_steps"])
+                "planner_entropy": planner_entropy(progress["environment_steps"], args.profile)
                 if joint
                 else None,
             }
@@ -454,6 +499,7 @@ def train(args):
             planner_rollout = (
                 PlannerRollout(planner, planner_state, planner_starts) if joint else None
             )
+            action_counts = np.zeros(shapes["action_mask"][0], dtype=np.int64)
             for step in range(args.horizon):
                 if step % args.sequence_length == 0:
                     state_buffer.append(tuple(value.detach().clone() for value in state))
@@ -470,6 +516,7 @@ def train(args):
                 action_buffer.append(actions[0])
                 with profile.measure("action_to_cpu_seconds"):
                     cpu_actions = actions[0].cpu().numpy()
+                np.add.at(action_counts, cpu_actions, 1)
                 planner_actions = None
                 if planner_rollout is not None:
                     with profile.measure("planner_policy_seconds"):
@@ -527,7 +574,7 @@ def train(args):
                     args,
                     device,
                     environments.planner_observation,
-                    planner_entropy(progress["environment_steps"]),
+                    planner_entropy(progress["environment_steps"], args.profile),
                 )
                 planner_state, planner_starts = planner_rollout.state, planner_rollout.starts
             if device.type == "cuda":
@@ -540,6 +587,7 @@ def train(args):
                 "rollout_seconds": rollout_seconds,
                 "update_seconds": update_seconds,
                 **worker_metrics,
+                "action_shares": action_shares(action_counts),
                 "episodes_completed": progress["episodes_completed"],
                 "rss_bytes": rss_bytes(),
             }
@@ -555,7 +603,9 @@ def train(args):
             )
             schedules.update(
                 phase_steps=progress["environment_steps"],
-                planner_entropy=planner_entropy(progress["environment_steps"]) if joint else None,
+                planner_entropy=planner_entropy(progress["environment_steps"], args.profile)
+                if joint
+                else None,
             )
             totals["rollout_seconds"] += rollout_seconds
             totals["update_seconds"] += update_seconds
@@ -707,7 +757,7 @@ if __name__ == "__main__":
         "--output", help="New directory; defaults to a unique results/train-* directory"
     )
     parser.add_argument(
-        "--phase2-from", help="Start joint training from a trusted phase-one checkpoint"
+        "--phase2-from", help="Warm-start any tax regime from a free-market phase-one checkpoint"
     )
     parser.add_argument("--resume", help="Trusted checkpoint; creates a linked child run")
     parser.add_argument("--checkpoint-every", type=int, default=5)
@@ -720,5 +770,14 @@ if __name__ == "__main__":
     parser.add_argument("--epochs", type=int)
     parser.add_argument("--seed", type=int)
     parser.add_argument("--tax-regime", choices=TAX_REGIMES)
+    parser.add_argument("--profile", choices=("pilot", "paper2020"))
+    parser.add_argument(
+        "--tax-anneal-steps", type=int, help="Aggregate phase-two steps to reach 100%% tax support"
+    )
+    parser.add_argument(
+        "--labor-warmup-constant",
+        type=float,
+        help="Foundation automatic warmup constant, per economy (0 = full cost)",
+    )
     arguments = parser.parse_args()
     train(arguments)

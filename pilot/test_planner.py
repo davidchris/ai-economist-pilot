@@ -112,7 +112,7 @@ def test_joint_transition_and_exact_restart(tmp_path):
         [
             (("--tax-regime", "learned-tax"), "require --phase2-from"),
             (("--phase2-from", str(invalid_source)), "free-market phase-one"),
-            (("--phase2-from", str(source), "--tax-regime", "fixed-tax"), "requires learned-tax"),
+            (("--phase2-from", str(source), "--profile", "paper2020"), "same training profile"),
             (("--phase2-from", str(source), "--resume", str(source)), "mutually exclusive"),
         ]
     ):

@@ -2,6 +2,20 @@
 
 Research date: 2026-09-15.
 
+Current milestone (2026-11-05): [productive worker pretraining](PRETRAINING_MILESTONE.md).
+Three training seeds sustain production at full labor cost on fresh episode seeds and
+through a full-cost phase-two hold. No tax comparison has been run on them, and
+economic convergence remains unestablished.
+
+Previous milestone (2026-11-04): an explicit `paper2020` profile adds spatial planner
+inputs, matched phase-two baseline transitions, and explicit tax-curriculum units.
+See [the paper-profile milestone](PAPER_MILESTONE.md) for compatibility, validation
+and the matched learning diagnostic. All 28 tests passed. The 800k-step diagnostic
+and 80 held-out episodes completed, but workers lost productive behavior during
+pretraining and all final treatments produced zero output. Productive worker
+pretraining is the next gate; economic convergence remains unestablished.
+Historical pilot findings below remain preserved.
+
 Current engineering work (2026-09-17): local Git repository with uv-managed
 dependencies, Ruff formatting/linting, ty type checking, and pytest. The resumable
 training contract and acceptance commands are in [restart validation](RESUME_VALIDATION.md).

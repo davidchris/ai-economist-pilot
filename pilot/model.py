@@ -13,8 +13,9 @@ from torch.distributions import Categorical
 
 
 class Tower(nn.Module):
-    def __init__(self, shapes, outputs):
+    def __init__(self, shapes, outputs, hidden=128):
         super().__init__()
+        self.hidden = hidden
         channels, height, width = shapes["world-map"]
         index_channels = shapes["world-idx_map"][0]
         self.embedding = nn.Embedding(100, 4)
@@ -30,14 +31,14 @@ class Tower(nn.Module):
                 torch.zeros(1, channels + index_channels * 4, height, width)
             ).shape[-1]
         self.dense = nn.Sequential(
-            nn.Linear(size + shapes["flat"][0], 128),
+            nn.Linear(size + shapes["flat"][0], hidden),
             nn.ReLU(),
-            nn.Linear(128, 128),
+            nn.Linear(hidden, hidden),
             nn.ReLU(),
-            nn.LayerNorm(128),
+            nn.LayerNorm(hidden),
         )
-        self.recurrent = nn.LSTM(128, 128)
-        self.output = nn.Linear(128, outputs)
+        self.recurrent = nn.LSTM(hidden, hidden)
+        self.output = nn.Linear(hidden, outputs)
 
     def forward(self, observations, state, starts):
         time, batch = observations["flat"].shape[:2]
@@ -47,7 +48,7 @@ class Tower(nn.Module):
         encoded = self.dense(
             torch.cat((self.convolution(spatial), observations["flat"].flatten(0, 1)), dim=-1)
         )
-        encoded = encoded.reshape(time, batch, 128)
+        encoded = encoded.reshape(time, batch, self.hidden)
         state = tuple(value * (1 - starts[0]).view(1, batch, 1) for value in state)
         if time == 1 or not starts[1:].any():
             output, state = self.recurrent(encoded, state)
@@ -138,8 +139,12 @@ class PlannerActorCritic(nn.Module):
         if sum(action_sizes) != shapes["action_mask"][0] or min(action_sizes) < 1:
             raise ValueError("Incompatible planner action layout")
         self.action_sizes = action_sizes
-        self.policy = PlannerTower(shapes["flat"][0], sum(action_sizes))
-        self.value = PlannerTower(shapes["flat"][0], 1)
+        if "world-map" in shapes:
+            self.policy = Tower(shapes, sum(action_sizes), hidden=256)
+            self.value = Tower(shapes, 1, hidden=256)
+        else:
+            self.policy = PlannerTower(shapes["flat"][0], sum(action_sizes))
+            self.value = PlannerTower(shapes["flat"][0], 1)
 
     def initial_state(self, batch, device):
         return tuple(torch.zeros(1, batch, 256, device=device) for _ in range(4))

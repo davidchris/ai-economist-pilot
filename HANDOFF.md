@@ -1,4 +1,29 @@
-# Next-agent brief: AI Economist after joint planner training
+# Next-agent brief: AI Economist after productive worker pretraining
+
+Completed milestone (2026-11-05): see [PRETRAINING_MILESTONE.md](PRETRAINING_MILESTONE.md).
+Workers now sustain productive behavior at full labor cost: three training seeds pass
+a prespecified gate on fresh episode seeds and through 240k full-cost phase-two steps.
+Use `--minibatch-sequences 4 --labor-warmup-constant 40000` for 4.4M steps; the three
+checkpoints are listed there. The collapse came from the labor curriculum, not batch
+size. Worker observations now include `time`, so earlier checkpoints are incompatible.
+Next: run the matched tax comparison with `--tax-anneal-steps 3600000`; the budget and
+the unchanged CPU/CUDA tolerance are justified there. Do not edit `pilot/train.py` before
+it: the source fingerprint would reject these checkpoints. No convergence or paper
+reproduction is established.
+Generated results are ignored and all task processes have stopped.
+
+Previous milestone (2026-11-04): see [PAPER_MILESTONE.md](PAPER_MILESTONE.md).
+The paper2020 profile implements spatial planner observations, matched transitions
+for all three current tax regimes, explicit curriculum settings and bounded
+continuation beyond 100 total updates. Checkpoint format is now 3; historical
+snapshots are preserved and cannot be migrated. All 28 tests passed, including
+three CUDA cases. The matched diagnostic completed 800k training steps and 80
+held-out episodes within the resource limits. All three final policies produced
+zero output; this collapse already occurred during shared worker pretraining.
+Next work is productive worker pretraining with a justified curriculum/batch
+budget before another tax-policy comparison. Source and results are archived in
+ignored `results/paper-medium-20261104/`; all task processes/scopes stopped.
+The entries below describe the previous milestone and its historical measurements.
 
 Updated: 2026-09-19. The three-seed bounded training and held-out evaluation workflow is complete; see BOUNDED_EXPERIMENT.md.
 

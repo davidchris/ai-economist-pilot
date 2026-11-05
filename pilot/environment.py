@@ -19,9 +19,32 @@ KEYS = ("flat", "world-map", "world-idx_map", "action_mask")
 
 
 TAX_REGIMES = ("free-market", "fixed-tax", "learned-tax")
+# Half-open worker action ranges in Foundation's flattened single-action layout.
+WORKER_ACTION_GROUPS = {"noop": (0, 1), "build": (1, 2), "trade": (2, 46), "move": (46, 50)}
 
 
-def configuration(tax_regime="free-market"):
+def action_shares(counts):
+    """Summarize worker action counts by economic activity for exploration diagnostics."""
+    total = counts.sum()
+    return {
+        name: float(counts[start:stop].sum() / total)
+        for name, (start, stop) in WORKER_ACTION_GROUPS.items()
+    }
+
+
+def resources_gathered(env):
+    """Read the Gather component's event log. Call before reset, which clears it."""
+    return int(sum(event["n"] for step in env.get_component("Gather").gathers for event in step))
+
+
+def configuration(
+    tax_regime="free-market",
+    profile="pilot",
+    workers=1,
+    phase2=False,
+    tax_anneal_steps=None,
+    labor_warmup_constant=None,
+):
     with (ROOT / "upstream/tutorials/rllib/phase1/config.yaml").open() as source:
         config = yaml.safe_load(source)["env"]
     if tax_regime not in TAX_REGIMES:
@@ -37,12 +60,52 @@ def configuration(tax_regime="free-market"):
     if tax_regime == "learned-tax":
         tax["rate_disc"] = 0.05
         config["energy_warmup_constant"] = 0
+    if phase2:
+        config["energy_warmup_constant"] = 0
+    if profile not in ("pilot", "paper2020"):
+        raise ValueError("Unknown training profile")
+    if profile == "paper2020":
+        config["planner_gets_spatial_info"] = True
+        # Paper Table 3 gives effective trade labor 0.05 (the tutorial uses 0.0525).
+        market = next(
+            c["ContinuousDoubleAuction"]
+            for c in config["components"]
+            if "ContinuousDoubleAuction" in c
+        )
+        market["order_labor"] = 0.05 / config["energy_cost"]
+        if not phase2 and tax_regime != "learned-tax":
+            config["energy_warmup_constant"] = (
+                10000 if labor_warmup_constant is None else labor_warmup_constant
+            )
+        if tax_regime != "free-market" and phase2:
+            # Foundation advances at episode resets. Convert aggregate steps to
+            # per-replica completions, preserving its tax masks and tax mechanics.
+            duration = 54_000_000 if tax_anneal_steps is None else tax_anneal_steps
+            if duration < 1 or workers < 1:
+                raise ValueError("Tax annealing steps and worker count must be positive")
+            slope = 0.9 * workers * config["episode_length"] / duration
+            tax["tax_annealing_schedule"] = [-0.1 / slope, slope]
     config["dense_log_frequency"] = None
     return config
 
 
+def configuration_from_run(config):
+    return configuration(
+        config["tax_regime"],
+        config.get("profile", "pilot"),
+        config.get("workers", 1),
+        bool(config.get("phase2_from")),
+        config.get("tax_anneal_steps"),
+        config.get("labor_warmup_constant"),
+    )
+
+
 def pack(observation):
     result = {key: np.stack([observation[str(i)][key] for i in range(4)]) for key in KEYS}
+    # Upstream's model feeds every non-spatial, non-mask key to its dense layers.
+    # "time" is the only such worker key outside Foundation's flattened vector.
+    time = np.stack([np.asarray(observation[str(i)]["time"]) for i in range(4)])
+    result["flat"] = np.concatenate((result["flat"], time.astype(result["flat"].dtype)), axis=1)
     assert all(np.isfinite(value).all() for value in result.values())
     assert (result["action_mask"].sum(axis=1) > 0).all()
     return result
@@ -53,21 +116,29 @@ def pack_planner(observation):
     raw = observation["p"]
     result = {
         "flat": np.concatenate(
-            [np.asarray(raw[k]).reshape(-1) for k in sorted(raw) if k != "action_mask"]
+            [
+                np.asarray(raw[k]).reshape(-1)
+                for k in sorted(raw)
+                if k not in ("action_mask", "world-map", "world-idx_map")
+            ]
         )[None].astype(np.float32),
         "action_mask": np.asarray(raw["action_mask"], dtype=np.float32)[None],
     }
+    for key in ("world-map", "world-idx_map"):
+        if key in raw:
+            result[key] = np.asarray(raw[key])[None]
     assert all(np.isfinite(value).all() for value in result.values())
     return result
 
 
-def worker(connection, seed, profile=False, snapshot=None, tax_regime="free-market"):
+def worker(connection, seed, profile=False, snapshot=None, tax_regime="free-market", config=None):
     try:
         from ai_economist import foundation
 
         if snapshot is None:
-            foundation.scenarios.get(configuration(tax_regime)["scenario_name"]).seed(seed)
-            env = foundation.make_env_instance(**configuration(tax_regime))
+            config = configuration(tax_regime) if config is None else config
+            foundation.scenarios.get(config["scenario_name"]).seed(seed)
+            env = foundation.make_env_instance(**config)
             observation = env.reset()
             episode_return = np.zeros(5 if tax_regime == "learned-tax" else 4)
         else:
@@ -135,6 +206,9 @@ def worker(connection, seed, profile=False, snapshot=None, tax_regime="free-mark
                     "return_mean": float(episode_return[:4].mean()),
                     "metrics": env.metrics,
                     "worker_rss_bytes": psutil.Process().memory_info().rss,
+                    "labor_weight": env.energy_weight,
+                    "tax_ceiling": env.get_component("PeriodicBracketTax").curr_rate_max,
+                    "resources_gathered": resources_gathered(env),
                 }
                 if joint:
                     metrics["planner_return"] = float(episode_return[4])
@@ -161,7 +235,9 @@ def worker(connection, seed, profile=False, snapshot=None, tax_regime="free-mark
 
 
 class Environments:
-    def __init__(self, count, seed, profile=False, snapshots=None, tax_regime="free-market"):
+    def __init__(
+        self, count, seed, profile=False, snapshots=None, tax_regime="free-market", config=None
+    ):
         self.joint = tax_regime == "learned-tax"
         self.planner_observation = {}
         self.planner_reward = None
@@ -184,6 +260,7 @@ class Environments:
                         profile,
                         snapshots[index] if snapshots else None,
                         tax_regime,
+                        config,
                     ),
                     daemon=True,
                 )

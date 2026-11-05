@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-VERSION = 2
+VERSION = 3
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -59,7 +59,7 @@ def load(path):
     # The outer format uses safe torch primitives; worker blobs are trusted pickle.
     snapshot = torch.load(path, map_location="cpu", weights_only=True)
     if snapshot.get("version") != VERSION:
-        raise ValueError("Unsupported/legacy checkpoint: exact resume requires format version 2")
+        raise ValueError("Unsupported/legacy checkpoint: exact resume requires format version 3")
     if snapshot["compatibility"] != compatibility():
         raise ValueError("Checkpoint source/runtime/recurrent layout is incompatible")
     return snapshot

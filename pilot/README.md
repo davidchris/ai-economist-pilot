@@ -3,6 +3,36 @@
 This pilot trains worker policies and a separate tax planner in the Salesforce Foundation economy.
 It uses native Linux, Python 3.12, and PyTorch 2.9.1 with CUDA 12.6.
 
+## Productive pretraining (2026-11-05)
+
+`pilot/pretrain.py` runs resumable phase-one arms, reference policies, the productivity
+gate and a full-cost hold. Use `--minibatch-sequences 4 --labor-warmup-constant 40000`
+for 4.4M steps. See [PRETRAINING_MILESTONE.md](../PRETRAINING_MILESTONE.md) for commands
+and results. Worker `flat` observations now include `time` (137 values); earlier
+checkpoints are incompatible. `metrics.jsonl` adds `explained_variance` and
+`action_shares`; episode records add `resources_gathered`.
+
+## Paper-aligned profile (2026-11-04)
+
+Use `--profile paper2020` for spatial planner observations, horizon 200, sequence
+length 50, one epoch, 3,000-transition default minibatches and planner entropy 0.1.
+`--tax-anneal-steps` defaults to 54M aggregate phase-two steps;
+`--labor-warmup-constant` explicitly configures Foundation's automatic labor warmup.
+Both are inherited and checked on resume. The same phase-one checkpoint can
+initialize `--tax-regime free-market`, `fixed-tax` or `learned-tax` with
+`--phase2-from`; all phase-two treatments use full labor costs.
+
+Paper-profile runs may exceed 100 total updates through repeated invocations of
+at most 100 additional updates each. Four-process and systemd resource limits are
+unchanged. All new checkpoints use format 3; existing snapshots are preserved,
+incompatible and unmigrated. The original pilot defaults described below still
+apply when no paper profile is selected.
+
+See [PAPER_MILESTONE.md](../PAPER_MILESTONE.md) for the exact deviations, experiment
+protocol, validation and results. `uv run --no-sync python pilot/experiment.py
+--output results/NEW-DIRECTORY --device cuda` runs the complete prespecified
+diagnostic, with resource checks and a bounded scope for every child invocation.
+
 ## Scope
 
 - The pinned Foundation scenario has four agents, a 25 × 25 map, and 1,000-step episodes.
@@ -30,6 +60,8 @@ This pilot does not establish economic convergence, learned tax quality, or repr
 | `run.sh` | Ten-minute timeout and uv-based training launcher |
 | `checkpoint.py` | Versioned atomic snapshots, retention, and committed log recovery |
 | `test_resume.py` | Fresh-process restart and checkpoint failure checks |
+| `pretrain.py` | Pretraining arms, reference policies, productivity gate and hold test |
+| `test_pretrain.py` | Gate, reference-policy, protocol and observation checks |
 | `requirements.txt` | Direct dependencies and the official CUDA wheel hash |
 | `../upstream/LOCAL_PATCHES.md` | Source revision and NumPy compatibility patch |
 
@@ -109,7 +141,8 @@ runtime versions, and source fingerprint must be compatible.
 Only load trusted local checkpoints. Simulator/RNG snapshots contain pickle data.
 Preserve each checkpoint's accompanying JSONL logs: resume copies their committed
 prefixes and ignores later records. Old pilot checkpoints lack the required state
-and cannot resume. The current budget remains capped at 100 updates.
+and cannot resume. The default pilot profile remains capped at 100 total updates;
+the paper profile allows at most 100 additional updates per bounded invocation.
 
 ## Validation and interpretation
 
@@ -200,8 +233,8 @@ and remain preserved but incompatible; no migration is provided.
 
 ## Joint worker–planner training
 
-Use `--phase2-from PATH` with a **current-format free-market checkpoint** to start
-phase two. It preserves worker weights and Adam state, creates a separate recurrent
+Use `--phase2-from PATH` with a **current-format free-market phase-one checkpoint** to start
+phase two. By default it preserves worker weights and Adam state, creates a separate recurrent
 planner and optimizer, enables Foundation's learned taxes and tax annealing, and
 uses full labor costs. Both policies train in the same economies. The transition
 starts fresh episodes, recurrent state and phase counters. `--updates` is the total
@@ -211,7 +244,7 @@ The planner has seven masked categorical action heads, public per-worker inputs,
 256-unit policy/value LSTMs, learning rate 1e-4, and a linear entropy schedule from
 2.0 to 0.125 over 50 million aggregate phase-two environment steps. Worker entropy
 remains 0.025. Both policies retain numerical, recurrent-replay and CPU portability
-checks. Format-v2 checkpoints save all new policy and schedule state.
+checks. Current format-v3 checkpoints save all policy, profile and schedule state.
 
 See [planner contract, commands and measurements](../PLANNER_VALIDATION.md).
 Historical checkpoints cannot be migrated. The evaluator now runs both frozen
