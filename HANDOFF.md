@@ -10,7 +10,8 @@ Workers now sustain productive behavior at full labor cost: three training seeds
 a prespecified gate on fresh episode seeds and through 240k full-cost phase-two steps.
 Use `--minibatch-sequences 4 --labor-warmup-constant 40000` for 4.4M steps; the three
 checkpoints are listed there. The collapse came from the labor curriculum, not batch
-size. Worker observations now include `time`, so earlier checkpoints are incompatible.
+size. Worker `flat` now appends a duplicate of `time`, which was already at `flat[130]`,
+so earlier checkpoints are incompatible.
 No convergence or paper reproduction is established.
 
 Latest result (2026-11-06): see [TAX_COMPARISON.md](TAX_COMPARISON.md). The learned-tax arm

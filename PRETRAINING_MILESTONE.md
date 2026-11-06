@@ -39,11 +39,20 @@ learned best. Only 16 optimizer steps per update lifted the critic off its ceili
 within the budget. This reverses the earlier suspicion and is a budget-dependent
 result, not a claim about the paper's batch size.
 
-**Port defect fixed: workers never saw `time`.** Upstream's model feeds every
-non-spatial, non-mask key to its dense layers, but `pack()` dropped the worker `time`
-key. Worker `flat` is now 137 wide instead of 136. Effect here was modest (seed 42
-held-out productivity at 400k: 1,002 to 1,134, close to noise). It is fidelity, not the
-fix: constant 100 still collapses with it.
+**Input change: `time` is appended, as a duplicate.** Upstream's model feeds every
+non-spatial, non-mask key to its dense layers, but `pack()` dropped the separate worker
+`time` key. Worker `flat` is now 137 wide instead of 136, which matches upstream's input.
+
+Correction (2026-11-06): this was first recorded as a defect in which workers never saw
+`time`. That was wrong. Foundation's flattened vector already contains it: over one
+1,000-step episode, `flat[130]` was the only element that equaled `time` at every step.
+So the change added no new information, and the comment in `pack()` that calls `time`
+the only such key "outside Foundation's flattened vector" is misleading. That comment
+stays, because `pilot/environment.py` is part of the source fingerprint and editing it
+would reject the current checkpoints.
+
+Effect here was modest (seed 42 held-out productivity at 400k: 1,002 to 1,134, close to
+noise), and it was not the fix: constant 100 still collapses with it.
 
 **Critic saturation, a slow start rather than a blocker.** A direct probe of the 4-step
 arm at 160k found a constant value (V = 17.31 for every agent after about t = 100). That
@@ -76,7 +85,7 @@ References (development seeds 20000–20009):
 
 ## Screening results (development seeds 20000–20009)
 
-Stage A, labor-free control (constant 1e12), 400k steps, seed 42, before the `time` fix:
+Stage A, labor-free control (constant 1e12), 400k steps, seed 42, before `time` was appended:
 
 | Minibatch transitions | Optimizer steps per update | Training productivity 40k → 360k | Explained variance at 360k | Held-out productivity at 400k |
 | ---: | ---: | --- | ---: | ---: |
@@ -84,10 +93,10 @@ Stage A, labor-free control (constant 1e12), 400k steps, seed 42, before the `ti
 | 800 | 4 | 495 → 717 | −0.002 | 949 ± 56 |
 | 3,200 | 1 | 577 → 932 | −0.001 | 440 ± 40 |
 
-Stage A2 repeated this with `time`: minibatch 200 reached 1,134 ± 65 (seed 42) and
+Stage A2 repeated this with `time` appended: minibatch 200 reached 1,134 ± 65 (seed 42) and
 1,181 ± 62 (seed 142) at 400k; minibatch 800 reached 866 ± 26 (seed 42).
 
-Curricula, minibatch 200, seed 42, all with `time`:
+Curricula, minibatch 200, seed 42, all with `time` appended:
 
 | Constant | Steps run | Labor weight reached | Outcome |
 | ---: | ---: | ---: | --- |
@@ -241,7 +250,7 @@ uv run --no-sync python pilot/pretrain.py --output results/pretrain-control-labo
   --steps 240000 --eval-every 120000 --arm labor100:42:100:4
 ```
 
-Stage A used the source before the `time` fix; its archive and patch are in its
+Stage A used the source before `time` was appended; its archive and patch are in its
 directory. In Stage B, the first invocation failed on the 10,000 arm's check, and
 `report.json` reflects only the last completing invocation. Use the `report-*.json` and
 `final-*.json` files, which cover each arm.

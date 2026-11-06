@@ -8,8 +8,8 @@ It uses native Linux, Python 3.12, and PyTorch 2.9.1 with CUDA 12.6.
 `pilot/pretrain.py` runs resumable phase-one arms, reference policies, the productivity
 gate and a full-cost hold. Use `--minibatch-sequences 4 --labor-warmup-constant 40000`
 for 4.4M steps. See [PRETRAINING_MILESTONE.md](../PRETRAINING_MILESTONE.md) for commands
-and results. Worker `flat` observations now include `time` (137 values); earlier
-checkpoints are incompatible. `metrics.jsonl` adds `explained_variance` and
+and results. Worker `flat` observations now append a duplicate of `time`, already at
+`flat[130]` (137 values); earlier checkpoints are incompatible. `metrics.jsonl` adds `explained_variance` and
 `action_shares`; episode records add `resources_gathered`.
 
 ## Paper-aligned profile (2026-11-04)
