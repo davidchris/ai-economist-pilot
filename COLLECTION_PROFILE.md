@@ -4,7 +4,7 @@ Date: 2026-09-15.
 
 ## Results
 
-Artifacts: [collection-2ek0mfic](results/collection-2ek0mfic/).
+Artifacts: `results/collection-2ek0mfic/` (not tracked).
 
 | CUDA configuration | Trial 1 steps/s | Trial 2 steps/s | Mean steps/s |
 | --- | ---: | ---: | ---: |

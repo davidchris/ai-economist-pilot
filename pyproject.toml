@@ -9,7 +9,7 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["ruff", "ty", "pytest"]
+dev = ["ruff", "ty", "pytest", "pre-commit"]
 
 [tool.pytest.ini_options]
 testpaths = ["pilot"]

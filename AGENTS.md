@@ -8,3 +8,4 @@
 - Recheck disk, RAM, load, and GPU availability before experiments. Keep at least 15 GiB free. Do not change other services or other disks on the host.
 - Preserve Foundation economic mechanics, numerical checks, and exact update-boundary restart semantics. Document any compatibility limits. Evaluation and planner training are separate future milestones.
 - Keep generated results, virtual environments, caches, and the pinned upstream source archive out of this repository. Its provenance and compatibility patch are documented in `UPSTREAM.md`. Record validation commands and measured results in tracked documentation.
+- Keep tracked files free of hostnames, home paths, personal emails, and machine-specific operational details: this repository is public. `pre-commit` runs Ruff, ty, betterleaks, and pytest on `git push`. Never push with `--mirror` or `--all`: local `refs/t3/*` and `refs/backup/*` keep unscrubbed history.

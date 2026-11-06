@@ -1,5 +1,10 @@
 # Next-agent brief: AI Economist after productive worker pretraining
 
+Public release preparation (2026-11-06): history was rewritten to remove a personal email
+and machine details, so commit hashes changed. Pre-push hooks run Ruff, ty, betterleaks and
+`pilot/pytest_bounded.sh`. Measured on this source: 43 passed, 3 opt-in tests skipped, in
+206.61 s and 216.58 s across two scopes. Training source is unchanged.
+
 Completed milestone (2026-11-05): see [PRETRAINING_MILESTONE.md](PRETRAINING_MILESTONE.md).
 Workers now sustain productive behavior at full labor cost: three training seeds pass
 a prespecified gate on fresh episode seeds and through 240k full-cost phase-two steps.

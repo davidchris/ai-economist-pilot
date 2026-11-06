@@ -52,7 +52,7 @@ Checkpoints use **format 3**. Profile, curriculum parameters and phase provenanc
 are saved, inherited on resume and checked for drift. Full Foundation/RNG,
 optimizer and recurrent snapshots still define exact update-boundary continuation.
 Historical format-2 checkpoints and results remain untouched; there is no migration.
-The old implementation is preserved in Git commit `773f9cd`.
+The old implementation is preserved in Git commit `77bf2cd`.
 
 Evaluation preserves each checkpoint's spatial contract, freezes policies and
 uses full labor costs and full tax support. Evaluating before the training ceiling

@@ -107,8 +107,10 @@ It is not an estimate for an optimized full-server run.
 
 ## Saved artifacts
 
-- [CUDA summary](results/cuda/summary.json), [configuration](results/cuda/config.json), [per-update metrics](results/cuda/metrics.jsonl), and [checkpoint](results/cuda/checkpoint.pt).
-- [CPU summary](results/cpu/summary.json), [configuration](results/cpu/config.json), [per-update metrics](results/cpu/metrics.jsonl), and [checkpoint](results/cpu/checkpoint.pt).
-- [CUDA GPU telemetry](results/cuda-gpu.csv) and [CPU-run GPU telemetry](results/cpu-gpu.csv).
-- [CUDA scope sample](results/cuda-scope.txt) and [CPU scope sample](results/cpu-scope.txt).
-- [Dependency lock](pilot/requirements.lock.txt) and [upstream revision/patch](upstream/LOCAL_PATCHES.md).
+Result files are not tracked:
+
+- `results/cuda/`: `summary.json`, `config.json`, `metrics.jsonl`, and `checkpoint.pt`.
+- `results/cpu/`: the same four files.
+- GPU telemetry: `results/cuda-gpu.csv` and `results/cpu-gpu.csv`.
+- Scope samples: `results/cuda-scope.txt` and `results/cpu-scope.txt`.
+- [Dependency lock](pilot/requirements.lock.txt) and [upstream revision/patch](UPSTREAM.md).

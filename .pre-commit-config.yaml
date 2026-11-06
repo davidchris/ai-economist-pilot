@@ -1,0 +1,45 @@
+# Installed with `uv run --no-sync pre-commit install`. Every hook runs on `git push`.
+default_install_hook_types: [pre-push]
+default_stages: [pre-push]
+fail_fast: true
+
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --no-sync ruff check pilot
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: ruff-format
+        name: ruff format --check
+        entry: uv run --no-sync ruff format --check pilot
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: ty
+        name: ty check
+        entry: uv run --no-sync ty check
+        language: system
+        pass_filenames: false
+        always_run: true
+      # The upstream betterleaks hook scans the staged diff, which is empty at push time.
+      # This scans the full history of the ref being pushed instead.
+      - id: betterleaks
+        name: betterleaks
+        entry: >-
+          bash -c 'betterleaks git --no-banner --redact
+          --log-opts="${PRE_COMMIT_TO_REF:-HEAD}" .'
+        language: golang
+        additional_dependencies: [github.com/betterleaks/betterleaks@v1.10.0]
+        pass_filenames: false
+        always_run: true
+      # Slowest, so it runs last. About 7 minutes; skip with `SKIP=pytest git push`.
+      - id: pytest
+        name: pytest (bounded scopes)
+        entry: bash pilot/pytest_bounded.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+        require_serial: true
