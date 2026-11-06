@@ -1,5 +1,7 @@
-# Installed with `uv run --no-sync pre-commit install`. Every hook runs on `git push`.
-default_install_hook_types: [pre-push]
+# Installed with `uv run --no-sync pre-commit install`. Every hook runs on `git push`;
+# the Ruff hooks also run on `git commit`. They only check, so they never rewrite source
+# that checkpoints fingerprint.
+default_install_hook_types: [pre-commit, pre-push]
 default_stages: [pre-push]
 fail_fast: true
 
@@ -10,12 +12,14 @@ repos:
         name: ruff check
         entry: uv run --no-sync ruff check pilot
         language: system
+        stages: [pre-commit, pre-push]
         pass_filenames: false
         always_run: true
       - id: ruff-format
         name: ruff format --check
         entry: uv run --no-sync ruff format --check pilot
         language: system
+        stages: [pre-commit, pre-push]
         pass_filenames: false
         always_run: true
       - id: ty

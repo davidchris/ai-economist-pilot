@@ -110,7 +110,8 @@ Only load checkpoints you trust, because simulator and RNG state are stored as p
 | Tests in bounded scopes | `bash pilot/pytest_bounded.sh` |
 | Everything, as on push | `uv run --no-sync pre-commit run --all-files --hook-stage pre-push` |
 
-`pre-commit` runs all of these on `git push`, along with a
+`pre-commit` runs the two Ruff checks on `git commit`, and all of these on `git push`, along
+with a
 [betterleaks](https://github.com/betterleaks/betterleaks) secret scan of the history being
 pushed. The hooks check your working tree, so a dirty tree can differ from what is pushed.
 The test suite takes about 7 minutes; use `SKIP=pytest git push` to skip it when you have
