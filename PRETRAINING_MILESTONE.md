@@ -193,8 +193,10 @@ checkpoints are incompatible and were skipped.
   was declining, was about four times faster. This is an analogy between two different
   curricula, not evidence that workers will adapt to taxes.
 - It uses episodes per economy, so it gives 4 economies far fewer samples than the paper's
-  60 over the same ramp. Only the learned-tax treatment has this ceiling. The free-market
-  and fixed-tax treatments ignore it and match on total steps only.
+  60 over the same ramp. Both tax treatments have this ceiling during training. Fixed-tax
+  rates are clipped to it, so they start at a flat 10% and reach the full US brackets once
+  the ceiling passes 37%, about 1.08M steps in. The free-market treatment has no taxes and
+  matches on total steps only. Evaluation removes the ceiling for all of them.
 - Planned budget: 4.4M phase-two steps per treatment, the 3.6M ramp plus 800k at full
   support, evaluated at both points. 800k is a resource choice and can be extended
   through resume. From measured throughput, nine runs at three concurrent would take about
@@ -268,7 +270,5 @@ at 34 MiB, and no trainer, evaluator or orchestrator processes remaining.
 
 ## Next work
 
-1. Run all three phase-two treatments from the three checkpoints above with the budget
-   recorded under "Decisions for the tax comparison". This needs a small driver: the
-   existing `pilot/experiment.py` protocol hard-codes the compressed curricula.
-2. Consider longer pretraining or more seeds if the comparison needs a higher baseline.
+The matched comparison has run; see [TAX_COMPARISON.md](TAX_COMPARISON.md) for its results
+and next work. The critic-check estimate above was too low for collapsed arms.

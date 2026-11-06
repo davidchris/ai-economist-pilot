@@ -6,10 +6,14 @@ a prespecified gate on fresh episode seeds and through 240k full-cost phase-two 
 Use `--minibatch-sequences 4 --labor-warmup-constant 40000` for 4.4M steps; the three
 checkpoints are listed there. The collapse came from the labor curriculum, not batch
 size. Worker observations now include `time`, so earlier checkpoints are incompatible.
-Next: run the matched tax comparison with `--tax-anneal-steps 3600000`; the budget and
-the unchanged CPU/CUDA tolerance are justified there. Do not edit `pilot/train.py` before
-it: the source fingerprint would reject these checkpoints. No convergence or paper
-reproduction is established.
+No convergence or paper reproduction is established.
+
+Latest result (2026-11-06): see [TAX_COMPARISON.md](TAX_COMPARISON.md). The learned-tax arm
+collapsed on all three seeds with a planner still close to random, so this is not evidence
+about learned taxes as such. Fixed-tax and free-market stayed productive. Next: find out why
+the planner does not learn, starting with a uniform-random planner control. Editing
+`pilot/train.py` makes the source fingerprint reject the pretraining checkpoints. NVIDIA
+packages were upgraded on 2026-11-05 without a reboot, so `nvidia-smi` fails until one.
 Generated results are ignored and all task processes have stopped.
 
 Previous milestone (2026-11-04): see [PAPER_MILESTONE.md](PAPER_MILESTONE.md).

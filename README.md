@@ -3,6 +3,7 @@
 Research date: 2026-09-15.
 
 Current milestone (2026-11-05): [productive worker pretraining](PRETRAINING_MILESTONE.md).
+Latest result (2026-11-06): [matched tax comparison](TAX_COMPARISON.md); the planner did not learn.
 Three training seeds sustain production at full labor cost on fresh episode seeds and
 through a full-cost phase-two hold. No tax comparison has been run on them, and
 economic convergence remains unestablished.
